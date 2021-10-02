@@ -1,4 +1,4 @@
-all: roms.dsk
+all: roms.dsk bas.dsk
 
 .PHONY: roms.dsk
 roms.dsk:
@@ -33,6 +33,19 @@ roms.dsk:
 	#decb copy -2 -b "roms/Videotex v1.2 (1981) (26-2222) (Tandy).ccc" roms.dsk,VIDEO.CCC
 	cp loadroms.bas /tmp && unix2dos /tmp/loadroms.bas && decb copy -0 -a "/tmp/loadroms.bas" roms.dsk,LOADROMS.BAS
 
+.PHONY: bas.dsk
+bas.dsk:
+	decb dskini bas.dsk
+	cp basic/SPEAK.BAS /tmp && unix2dos /tmp/SPEAK.BAS && decb copy -0 -a "/tmp/SPEAK.BAS" bas.dsk,SPEAK.BAS
+	cp basic/SPEAKCC.BAS /tmp && unix2dos /tmp/SPEAKCC.BAS && decb copy -0 -a "/tmp/SPEAKCC.BAS" bas.dsk,SPEAKCC.BAS
+	cp basic/TONE.BAS /tmp && unix2dos /tmp/TONE.BAS && decb copy -0 -a "/tmp/TONE.BAS" bas.dsk,TONE.BAS
+	cp basic/SSCDEMO.BAS /tmp && unix2dos /tmp/SSCDEMO.BAS && decb copy -0 -a "/tmp/SSCDEMO.BAS" bas.dsk,SSCDEMO.BAS
+	cp basic/SNDEFF.BAS /tmp && unix2dos /tmp/SNDEFF.BAS && decb copy -0 -a "/tmp/SNDEFF.BAS" bas.dsk,SNDEFF.BAS
+	cp basic/ORGAN.BAS /tmp && unix2dos /tmp/ORGAN.BAS && decb copy -0 -a "/tmp/ORGAN.BAS" bas.dsk,ORGAN.BAS
+
 dir-roms.dsk:
 	decb dir roms.dsk
+
+dir-bas.dsk:
+	decb dir bas.dsk
 
