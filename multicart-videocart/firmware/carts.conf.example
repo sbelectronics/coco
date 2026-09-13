@@ -1,0 +1,31 @@
+# carts.conf — ROMs to bake into a filesystem image.
+#
+# Copy to carts.conf, drop the ROM files in carts/, and run:
+#     make multicart-carts     (or videocart-carts)
+# to build firmware + a filesystem image with these carts already
+# installed — no web upload needed. Flash with:
+#     make flash-multicart-carts
+#
+# If carts.conf does NOT exist, every file in carts/ is baked in with
+# default metadata, so for the simple case you can skip this file
+# entirely and just drop ROMs in carts/.
+#
+# One cart per line. Fields are '|'-separated; only the filename is
+# required:
+#
+#   filename [| title [| autostart [| scheme [| insert]]]]
+#
+#   filename   relative to carts/ (letters, digits, . _ - ( ) space)
+#   title      menu label (default: filename, upper-cased, ext dropped)
+#   autostart  1 = boot on select (default), 0 = manual
+#   scheme     flat | bank16k | auto   (default auto: >16 KB => bank16k)
+#   insert     1 = insertion-style start: let BASIC boot to READY, then
+#              raise CART* (needed by some cassette conversions; ~2 s
+#              slower). Default 0.
+#
+# Lines starting with # and blank lines are ignored.
+
+# examples (delete these once you add real files):
+# zaxxon.rom
+# donkey.ccc      | Donkey Kong      | 1 | auto
+# diagnostics.rom | CoCo Diagnostics | 0 | flat

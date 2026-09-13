@@ -1,0 +1,29 @@
+build/
+common/config_local.h
+# per-machine build settings (PICO_SDK_PATH etc.)
+local.mk
+
+# host-test build/run products (test/results/ IS tracked: it holds the
+# reference renders reviewed before bring-up)
+test/test_sweep
+test/test_serve_pipeline
+test/test_sampler_timing
+test/test_stub6809
+test/test_hstx_frame
+test/test_vdg
+test/test_audio
+test/test_ui_vc
+test/test_cfg
+test/test_romfs
+test/test_select
+test/test_ui
+test/out_*.ppm
+test/ui_*.txt
+
+# baked-cart build products and the user's ROM files (copyright).
+# carts/README.md, carts/.gitkeep and carts.conf.example ARE tracked.
+build-carts/
+carts.conf
+carts/*
+!carts/README.md
+!carts/.gitkeep

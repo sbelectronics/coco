@@ -1,0 +1,108 @@
+# ======================================================================
+# CoCo cartridge project — repository ignores
+#
+# Principle: ignore machine-generated and machine-local files, keep
+# every design source. Notable NON-ignores are called out below, because
+# blanket patterns that look obvious are wrong for this project.
+# ======================================================================
+
+# ---- OS / file-server metadata ---------------------------------------
+@eaDir/
+.DS_Store
+._*
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# ---- editor / IDE scratch --------------------------------------------
+*~
+*.swp
+*.swo
+*.orig
+*.rej
+# Un-ignore .vscode/ if you ever want to share tasks/launch configs.
+.vscode/
+.idea/
+
+# ---- board design ----------------------------------------------------
+# The PCB design is not tracked here — schematics, layouts, their text
+# exports and any fab output stay local. Delete the three source
+# patterns below if that changes; the rest should stay ignored anyway.
+*.sch
+*.brd
+*.lbr
+
+*-netlist
+*-partlist
+
+# EDA per-user state and rolling backups
+*.b#?
+*.s#?
+*.l#?
+*.b$?
+*.s$?
+*.l$?
+*.epf
+*.epf.bak
+# CAM / fab output (regenerate from the layout)
+CAMOutputs/
+*.dri
+*.drd
+*.gpi
+*.gbr
+*.gbl
+*.gtl
+*.gbs
+*.gts
+*.gbo
+*.gto
+*.gml
+*.xln
+*.exc
+
+# ---- build output -----------------------------------------------------
+# firmware/.gitignore also scopes build/ and the credentials file.
+build/
+*.o
+*.elf
+*.map
+*.dis
+# Gowin (gateware/tang-videocart, when it exists)
+impl/
+*.fs
+
+# ---- credentials ------------------------------------------------------
+# The WiFi SSID/PSK header. ANCHORED to the one file that ever holds a
+# secret: firmware/test/shim/ has a one-line stub of the same name that
+# the host tests need on their include path, and an unanchored rule
+# swallows it — after which `make test` cannot build from a fresh clone.
+# The .example template and the shim stub are both committed.
+firmware/common/config_local.h
+
+# ---- ROM images and other copyrighted software --------------------------
+# Most CoCo cartridge ROMs, cassette images and disk images are still-
+# copyrighted commercial software, so none of it may end up in the repo.
+# Keep test material in these places and it stays local.
+roms/
+cassettes/
+disks/
+basic/*.rom
+basic/*.bas
+basic/*.cas
+basic/*.asm
+firmware/carts/*.rom
+firmware/carts/*.ccc
+firmware/carts/*.bin
+
+# scratch
+.skewtest
+
+# NOT ignored on purpose:
+#   *.bin  — this is a ROM cartridge project; .bin is a meaningful
+#            source/artifact extension (ROM images, firmware images for
+#            OTA). Generated ones are already covered by build/.
+#   *.uf2  — so a release build can be committed deliberately if wanted.
+
+# stray editor/tool artifacts
+*.bak
+__pycache__/

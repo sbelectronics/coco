@@ -1,0 +1,354 @@
+; ======================================================================
+; bus_pio.pio — VIDEOCART bus engine.
+;
+; Four state machines. The serve path is HARDWARE END TO END: no CPU sits
+; on any per-cycle deadline, which is the whole point of the redesign.
+;
+;   pio1:  mux_sampler   drives SEL0/SEL1, extracts the address from the
+;                        '153 muxes, and pushes a literal SRAM ADDRESS of
+;                        a permuted-ROM table entry. DMA does the lookup.
+;
+;   pio2:  sweep_follower passively samples the same 4 phases for the
+;                        SNOOP (64K mirror). Timing mirrors the sampler
+;                        exactly -- see the cycle table below.
+;          wr_capture    samples D0..D7 after E rises: write data.
+;          bus_serve     drives D0..D7 from the table entry, gated on E
+;                        and on live R/W.
+;
+; WHY THIS SHAPE (measured): every design that reassembled
+; the address on the CPU missed the 6809E read deadline. Address is not
+; knowable until ~fall+490 ns; data must be valid by ~fall+1037 ns; the
+; CPU needed 450-500 ns of that 550 ns window and jitter alone was 100 ns.
+; It never fit. PIO+DMA closes the same path in ~150 ns, deterministic.
+;
+; PIO reads pads regardless of function mux, so the capture/follower SMs
+; can watch pins the serve SM drives.
+; ======================================================================
+
+; ---------------------------------------------------------------- sampler
+; IN base  = GP9  (M0..M2 at 0..2, M4 at 11, M3 at 13; HSTX GP12-19 at
+;                  3..10 and SCL GP21 at 12 are GARBAGE -- never indexed)
+; side-set = GP26 (SEL0), GP27 (SEL1)
+;
+; Per phase: snapshot the pads ONCE into OSR (`mov osr, pins`), then mine
+; that snapshot with `in osr` / `out null`. Because the pins are never
+; re-read inside a phase, SEL for the NEXT phase is flipped on the very
+; first instruction after the snapshot -- the '153 settle then overlaps
+; the bit extraction instead of costing dead time.
+;
+; `in osr, n` copies the n LSBs of OSR without consuming it; `out null, n`
+; consumes n. So the sequence per phase is:
+;     in  osr, 3   -> M0,M1,M2   (three address bits)
+;     out null,13  -> discard up to and including M3's position-1
+;     in  osr, 1   -> M3         (fourth address bit)
+; and where a gate is wanted, `out y, 1` lands M3 in Y instead.
+;
+; ---- INDEX FORMAT --------------------------------------------------
+; ISR starts at X = table_base >> 15, then 15 bits shift in (IN LEFT):
+;
+;   A8 A4 A0 | A12 | A9 A5 A1 | A13 | A10 A6 A2 | A11 A7 A3 | 0
+;
+; giving  word = table_base | (perm_idx(A0..A13) * 2).  The pushed word IS
+; the byte address of a uint16_t table entry -- DMA needs no arithmetic.
+; The trailing `in null, 1` is the *2 for 16-bit entries. The table is
+; permuted to match this order, so nothing ever un-scrambles the address:
+; see perm_idx() in sweep.h, proven equal by test_perm/test_serve_pipeline.
+; table_base MUST be 32 KB aligned so the OR is exact.
+;
+; ---- GATING --------------------------------------------------------
+; A14 and A15 must BOTH be 1 ($C000-$FEFF). They are gates, not index
+; bits, so the table stays 32 KB/bank. Both tests happen AFTER the last
+; sample, so a failing address cannot change SEL timing -- critical,
+; because the follower's fixed delays assume the sweep is cycle-invariant
+; on EVERY cycle, including writes and non-window reads.
+;
+; R/W is deliberately NOT gated here. Gating it at phase 0 would branch
+; before the later samples and make SEL timing data-dependent, breaking
+; the follower on exactly the write cycles the snoop needs. The serve SM
+; tests live R/W on GP20 instead (valid because SEL parks at 0), so a
+; write cycle costs one wasted DMA lookup and drives nothing.
+;
+; $FF00-$FFFF passes the A14/A15 gate but MUST NOT be driven (6809 vector
+; fetches live there). It is excluded in the TABLE: those entries carry
+; dirs=0x00, which is why entries are 16-bit.
+;
+; ---- CYCLE TABLE (125 MHz, 8 ns/cycle; R = `wait 0` release) --------
+; Sample instants are what the follower must match, and what the '153
+; settle is measured against. The pad synchroniser costs 2 cycles, so
+; "effective settle" = (cycles since SEL flip) - 2.
+;
+;   instr                     starts at   note
+;   wait 0 gpio 8 [7]         R           E fell
+;   mov isr, x    [5]         R+8         6809 address setup time
+;   mov osr, pins             R+14        PHASE 0 sample (SEL=0 since
+;                                         last E-high: fully settled)
+;   in osr,3 (SEL->1)         R+15
+;   out null,13 [4]           R+16
+;   in osr,1 [3]              R+21
+;   mov osr, pins             R+25        PHASE 1 sample: 10 cyc after
+;                                         the flip = 8 effective = 64 ns
+;   ... identical cadence ...
+;   mov osr, pins             R+36        PHASE 2 sample (64 ns settle)
+;   mov osr, pins             R+47        PHASE 3 sample (64 ns settle)
+;   push                      R+54        ~440 ns after R
+;
+; Phase 0 lands 12 effective cycles (96 ns) after R -- a settle that is
+; hardware-proven for 6809 address setup, so it is reproduced
+; deliberately, not re-derived.
+;
+; 64 ns settle vs the '153's ~43 ns worst case at 5 V. Raising the settle
+; pushes the push later and eats serve margin; lowering it re-introduces
+; intermittent wrong-address bits.
+; NOTE: these must stay at FILE scope (before the first .program), or
+; pioasm scopes them to whichever program they follow and the follower
+; cannot see them.
+.define PUBLIC SAMP_SETUP0   7      ; delay on `wait 0`  (address setup)
+.define PUBLIC SAMP_SETUP1   5      ; delay on `mov isr, x` (ditto)
+.define PUBLIC SAMP_SETTLE_A 4      ; delay on `out null,13`
+.define PUBLIC SAMP_SETTLE_B 3      ; delay on the following `in`/`out`
+; Follower stride: `in pins,14` + `in y,2` = 2 cycles, then
+; `set y,N [FOLLOW_GAP]` = 9, giving the sampler's identical 11-cycle
+; spacing between samples.
+.define PUBLIC FOLLOW_GAP    8
+
+.program mux_sampler
+.side_set 2
+
+.wrap_target
+    wait 1 gpio 8       side 0                  ; resync: ensure E high
+    wait 0 gpio 8       side 0 [SAMP_SETUP0]    ; E falls
+    mov isr, x          side 0 [SAMP_SETUP1]    ; ISR = table_base>>15
+; ---- phase 0: A0,A4,A8 + A12 ---------------------------------------
+    mov osr, pins       side 0
+    in osr, 3           side 1                  ; A0,A4,A8; SEL->1
+    out null, 13        side 1 [SAMP_SETTLE_A]
+    in osr, 1           side 1 [SAMP_SETTLE_B]  ; A12
+; ---- phase 1: A1,A5,A9 + A13 ---------------------------------------
+    mov osr, pins       side 1
+    in osr, 3           side 2                  ; A1,A5,A9; SEL->2
+    out null, 13        side 2 [SAMP_SETTLE_A]
+    in osr, 1           side 2 [SAMP_SETTLE_B]  ; A13
+; ---- phase 2: A2,A6,A10 + A14 gate ---------------------------------
+    mov osr, pins       side 2
+    in osr, 3           side 3                  ; A2,A6,A10; SEL->3
+    out null, 13        side 3 [SAMP_SETTLE_A]
+    out y, 1            side 3 [SAMP_SETTLE_B]  ; Y = A14 (gate)
+; ---- phase 3: A3,A7,A11 + A15 gate ---------------------------------
+    mov osr, pins       side 3
+    in osr, 3           side 0                  ; A3,A7,A11; SEL parks 0
+    jmp !y, nopush      side 0                  ; A14 == 0 -> no serve
+    out null, 13        side 0
+    out y, 1            side 0                  ; Y = A15
+    jmp !y, nopush      side 0                  ; A15 == 0 -> no serve
+    in null, 1          side 0                  ; *2: 16-bit entries
+; NOBLOCK, and it matters: a blocking push would stall this SM whenever
+; the serve DMA is idle or paused, freezing SEL -- which would silently
+; kill the SNOOP, because the follower depends on the sweep running every
+; cycle. Liveness of capture outranks one serve word. A drop is still a
+; defect: it sets FDEBUG_RXSTALL, which bus_debug() reports and which the
+; acceptance criteria require to be zero.
+    push noblock        side 0
+nopush:
+    mov isr, null       side 0                  ; drop a partial index
+.wrap
+
+% c-sdk {
+#include "hardware/clocks.h"
+#include "config.h"
+
+// The sweep's sample positions are expressed in PIO cycles and were
+// proven against real 6809 address setup. Pin the state
+// machines to the rate those cycles were derived at, whatever clk_sys is
+// doing, so raising the system clock buys core 1 headroom without moving
+// a single sample.
+//
+// Scaling the delay constants instead was not an option: mux_sampler
+// side-sets 2 bits, leaving a 3-bit delay field, and SAMP_SETUP0 is
+// already 7. There is no room to double anything.
+//
+// The divider must stay integral -- config.h asserts it -- because a
+// fractional PIO divider dithers the cycle length, and the whole point of
+// this sweep is that four samples land on four exact cycles.
+static inline float bus_pio_div(void) {
+    return (float)clock_get_hz(clk_sys) / (float)(MC_PIO_REF_KHZ * 1000u);
+}
+
+static inline void mux_sampler_program_init(PIO pio, uint sm, uint offset,
+                                            uint pin_in_base, uint pin_sel0,
+                                            uint32_t table_base) {
+    pio_sm_config c = mux_sampler_program_get_default_config(offset);
+    sm_config_set_in_pins(&c, pin_in_base);
+    // IN shifts LEFT (index accumulates below the base), no autopush --
+    // `mov isr, x` resets the shift counter, so the push is explicit.
+    sm_config_set_in_shift(&c, false, false, 32);
+    // OUT shifts RIGHT so `out null, n` walks up the pin snapshot from
+    // M0 toward M3. No autopull: OSR is loaded by `mov osr, pins`.
+    sm_config_set_out_shift(&c, true, false, 32);
+
+    sm_config_set_sideset_pins(&c, pin_sel0);
+    pio_gpio_init(pio, pin_sel0);
+    pio_gpio_init(pio, pin_sel0 + 1);
+    pio_sm_set_consecutive_pindirs(pio, sm, pin_sel0, 2, true);
+
+    sm_config_set_clkdiv(&c, bus_pio_div());
+    pio_sm_init(pio, sm, offset, &c);
+
+    // Seed X with the table base. It must ALWAYS name a valid 32 KB
+    // aligned region: the serve DMA dereferences it every window read,
+    // including before any cart is mounted.
+    pio_sm_put_blocking(pio, sm, table_base >> 15);
+    pio_sm_exec(pio, sm, pio_encode_pull(false, true));
+    pio_sm_exec(pio, sm, pio_encode_out(pio_x, 32));
+}
+
+// Repoint the sampler at another bank's table.
+//
+// ONLY safe while the SM is DISABLED or parked at its `wait` (all of
+// E-high): SM_INSTR executes immediately, and `out x, 32` on a RUNNING
+// sweep destroys OSR -- the live pin snapshot -- corrupting that cycle's
+// address. bus.c's sampler_retable_parked() is the runtime path; it
+// waits for a fresh E-rise before calling into the same registers. Do
+// not call this directly on a running SM.
+static inline void mux_sampler_set_table(PIO pio, uint sm, uint32_t base) {
+    pio->txf[sm] = base >> 15;
+    pio_sm_exec(pio, sm, pio_encode_pull(false, true));
+    pio_sm_exec(pio, sm, pio_encode_out(pio_x, 32));
+}
+%}
+
+; --------------------------------------------------------------- follower
+; Passive twin of the sampler, for the SNOOP only. It drives nothing; the
+; sampler owns SEL. Its four `in pins, 14` MUST land on the same cycles as
+; the sampler's four `mov osr, pins` (R+14, R+25, R+36, R+47), so the
+; delays below are derived from the sampler's cycle table and must be
+; updated together with it. test_sampler_timing.c asserts this pairing.
+;
+; Word format: (pins14 << 2) | tag, autopushed at 16 bits, which is what
+; the byte-pair LUT reassembly in sweep.h consumes.
+;
+; No side-set here, so the delay field is the full 5 bits (max 31).
+
+.program sweep_follower
+.wrap_target
+    wait 1 gpio 8
+    wait 0 gpio 8 [SAMP_SETUP0]     ; identical anchor to the sampler
+    set y, 0       [SAMP_SETUP1]
+    in pins, 14                     ; R+14  phase 0
+    in y, 2
+    set y, 1       [FOLLOW_GAP]
+    in pins, 14                     ; R+25  phase 1
+    in y, 2
+    set y, 2       [FOLLOW_GAP]
+    in pins, 14                     ; R+36  phase 2
+    in y, 2
+    set y, 3       [FOLLOW_GAP]
+    in pins, 14                     ; R+47  phase 3
+    in y, 2
+.wrap
+
+% c-sdk {
+static inline void sweep_follower_program_init(PIO pio, uint sm, uint offset,
+                                               uint pin_in_base) {
+    pio_sm_config c = sweep_follower_program_get_default_config(offset);
+    sm_config_set_in_pins(&c, pin_in_base);
+    // Shift LEFT, autopush at 16: `in pins,14` + `in y,2` completes a
+    // word (pads [15:2], tag [1:0]), the layout sweep.h expects.
+    sm_config_set_in_shift(&c, false, true, 16);
+    sm_config_set_clkdiv(&c, bus_pio_div());
+    pio_sm_init(pio, sm, offset, &c);
+}
+%}
+
+; --------------------------------------------------------------- capture
+; IN base = GP0, so `in pins, 8` samples D0..D7 and `wait 1 pin 8`
+; watches E (GP8 = in_base + 8).
+;
+; The delay loop is 32 SM cycles; the clock divider scales those to the
+; configured nanoseconds, so the same cfg field and scope-tuning
+; procedure apply.
+;
+; The pushed word is (1 << 8) | data. The validity bit matters: a DMA ring
+; in SRAM needs to tell "slot written" from "slot empty", and a captured
+; data byte of $00 is legal, so zero alone cannot mean empty.
+.program wr_capture
+    set x, 1                    ; persistent validity bit
+.wrap_target
+    wait 0 pin 8
+    wait 1 pin 8                ; E rising: the write cycle has begun
+    set y, 29
+delay:
+    jmp y-- delay               ; set(1) + 30 jmps + in x(1) = 32 SM
+    in x, 1                     ; validity -> bit 8 after the shift below
+    in pins, 8                  ; D0..D7 -> bits 0..7
+    push block
+.wrap
+
+% c-sdk {
+#include "hardware/clocks.h"
+static inline void wr_capture_program_init(PIO pio, uint sm, uint offset,
+                                           uint delay_ns) {
+    pio_sm_config c = wr_capture_program_get_default_config(offset);
+    sm_config_set_in_pins(&c, 0);                 // absolute GP0 base
+    sm_config_set_in_shift(&c, false, false, 32);
+
+    float div = (float)clock_get_hz(clk_sys) * (float)delay_ns / 32e9f;
+    if (div < 1.0f)     div = 1.0f;
+    if (div > 65535.0f) div = 65535.0f;           // 16-bit divider
+    sm_config_set_clkdiv(&c, div);
+
+    pio_sm_init(pio, sm, offset, &c);
+}
+%}
+
+; --------------------------------------------------------------- serve
+; Receives {dirs,data} from the DMA lookup and drives D0..D7.
+;
+; Four independent guarantees, each enforced by hardware, none by timing:
+;
+;  1. NEVER drives during E-low. `wait 1 gpio 8` precedes any pindirs
+;     write, so the SAM's VDG fetch (which owns the bus for all of E-low)
+;     can never be contended.
+;  2. NEVER drives a write cycle. JMP_PIN is GP20 = M4, which carries
+;     live R/W while SEL is parked at 0 -- i.e. throughout E-high. This is
+;     the sole R/W gate (the sampler deliberately does not branch on it).
+;  3. NEVER drives outside the window. $C000-$FEFF is gated by A14/A15 in
+;     the sampler; $FF00-$FFFF is gated by dirs=0x00 in the table, so
+;     vector fetches see a tristated bus.
+;  4. NEVER serves a stale byte. The word arrives by DMA inside the same
+;     E-low its address was sampled in (~150 ns, fixed), so it cannot slip
+;     into a later cycle. There is no CPU in this path to be late.
+;
+; `out pins, 8` writes the data register BEFORE `out pindirs, 8` enables
+; the drivers, so enabling never emits a stale byte first.
+.program bus_serve
+.wrap_target
+    pull block                 ; {dirs,data}; arrives only on window reads
+    wait 1 gpio 8              ; E rises: the read window opens
+    out pins, 8                ; data (drivers still off)
+    jmp pin drive              ; live R/W high -> a read: drive it
+    jmp done                   ; a write slipped through -> drive nothing
+drive:
+    out pindirs, 8             ; $FF drives, $00 stays Hi-Z ($FFxx)
+    wait 0 gpio 8              ; hold for the whole of E-high
+done:
+    mov osr, null
+    out pindirs, 8             ; tristate, unconditionally
+.wrap
+
+% c-sdk {
+// pin_rw must be GP20 (M4): valid as R/W only while SEL rests at 0.
+static inline void bus_serve_program_init(PIO pio, uint sm, uint offset,
+                                          uint pin_d0, uint pin_rw) {
+    pio_sm_config c = bus_serve_program_get_default_config(offset);
+    sm_config_set_out_pins(&c, pin_d0, 8);
+    sm_config_set_jmp_pin(&c, pin_rw);
+    // OUT shifts RIGHT, no autopull: `out pins,8` takes the data byte,
+    // then `out pindirs,8` takes the dirs byte. The DMA writes 16 bits;
+    // the upper half of the FIFO word is never consumed, so whatever the
+    // bus fabric leaves there is harmless.
+    sm_config_set_out_shift(&c, true, false, 32);
+    for (uint i = 0; i < 8; i++) pio_gpio_init(pio, pin_d0 + i);
+    pio_sm_set_consecutive_pindirs(pio, sm, pin_d0, 8, false);  // Hi-Z
+    pio_sm_init(pio, sm, offset, &c);
+}
+%}

@@ -1,0 +1,12 @@
+// Copy to config_local.h (git-ignored) and fill in to bake WiFi
+// credentials into the firmware as a first-boot fallback. Leave the
+// macros undefined (or the file as-is) to require USB-CDC provisioning.
+// The persistent flash cfg sector always wins once provisioned.
+#ifndef MULTICART_CONFIG_LOCAL_H
+#define MULTICART_CONFIG_LOCAL_H
+
+// #define MC_WIFI_SSID      "myssid"
+// #define MC_WIFI_PASSWORD  "mypassword"
+// #define MC_WIFI_AUTH      CYW43_AUTH_WPA2_AES_PSK
+
+#endif

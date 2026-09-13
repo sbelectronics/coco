@@ -1,0 +1,70 @@
+; ======================================================================
+; bus_pio.pio — CoCo cartridge bus capture.
+;
+; Data serving (values AND pin directions) is done entirely by the core-1
+; CPU hot loop through SIO: a pin's function mux selects a single source
+; for both value and direction, so PIO cannot own pindirs while the CPU
+; owns data. The loop reacts to !CTS within one lap (~50-70 ns), hundreds
+; of ns inside the bus timing budget (see bus.c).
+;
+; bank_strobe: captures banked-cart register writes. STROBE (GP28) falls
+; only on a genuine write to $FF40..$FF5F (the '125 buffer-as-gate + D2
+; diode). After a tunable delay (SM clock divider, the scope-verified
+; knob) it samples GP0..GP21 in one shot.
+;
+; Captured word layout:
+;   bits 0..13   A0..A13
+;   bits 14..21  D0..D7
+;   bit  22      SEQUENCE BIT — flips on every capture
+;
+; The sequence bit exists because the serve loop reads a single latched
+; word and acts only when it CHANGES (it cannot afford a FIFO read per
+; lap; see bus.c). Two byte-identical bus writes in a row would otherwise
+; be indistinguishable from one write, and the second would be silently
+; ignored — which is exactly what a banked cart does when it re-selects
+; the bank it is already asking for. Flipping bit 22 every capture makes
+; every write a distinct word, so change-detection cannot miss one. This
+; is what makes plain, repeated `STA $FF40` correct, for our generated
+; carts and for commercial ones alike.
+;
+; PIO reads pads regardless of their function mux, so watching SIO-owned
+; pins is fine.
+; ======================================================================
+
+.program bank_strobe
+    set y, 0                ; sequence source: alternates 0 / ~0
+    wait 1 pin 28           ; ensure idle-high before arming
+.wrap_target
+    wait 0 pin 28           ; write strobe falls
+    mov y, ~y               ; flip the sequence bit
+    in y, 1                 ; shifted up to bit 22 by the `in pins` below
+    set x, 28
+delay:
+    jmp x-- delay           ; fall -> sample is 32 SM cycles; see the
+                            ; cycle count in bank_strobe_program_init
+    in pins, 22             ; A0..A13 | D0..D7 into bits 0..21
+    push block
+    wait 1 pin 28           ; strobe released (pull-up recovery ~100 ns)
+.wrap
+
+% c-sdk {
+#include "hardware/clocks.h"
+static inline void bank_strobe_program_init(PIO pio, uint sm, uint offset,
+                                            uint delay_ns) {
+    pio_sm_config c = bank_strobe_program_get_default_config(offset);
+    sm_config_set_in_pins(&c, 0);             // absolute GP0 base
+    // Shift LEFT: each `in` puts its bits at the bottom and pushes what
+    // is already there upwards. `in y,1` then `in pins,22` therefore
+    // lands the sequence bit at bit 22 and the pins at bits 0..21.
+    sm_config_set_in_shift(&c, false, false, 32);
+    // Strobe-fall to sample is 32 SM cycles, unchanged by the sequence
+    // bit: mov(1) + in(1) + set(1) + 29 jmp-loop = 32. The `set x, 28`
+    // above pays for the two added instructions — keep them in step.
+    // 32 SM cycles must span delay_ns: div = f_sys * delay_ns / (32 * 1e9)
+    float div = (float)clock_get_hz(clk_sys) * (float)delay_ns / 32e9f;
+    if (div < 1.0f)     div = 1.0f;       // floor: ~213 ns @150 MHz
+    if (div > 65535.0f) div = 65535.0f;   // 16-bit divider ceiling (~14 ms)
+    sm_config_set_clkdiv(&c, div);
+    pio_sm_init(pio, sm, offset, &c);
+}
+%}
