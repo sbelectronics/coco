@@ -116,7 +116,7 @@ void bus_init(uint32_t strobe_delay_ns) {
         gpio_set_dir(MC_PIN_D0 + i, GPIO_IN);
         gpio_disable_pulls(MC_PIN_D0 + i);
         gpio_set_slew_rate(MC_PIN_D0 + i, GPIO_SLEW_RATE_FAST);
-        gpio_set_drive_strength(MC_PIN_D0 + i, GPIO_DRIVE_STRENGTH_8MA);
+        gpio_set_drive_strength(MC_PIN_D0 + i, GPIO_DRIVE_STRENGTH_12MA);
     }
 
     // Claim the SM before use. Without this the CYW43 WiFi driver —

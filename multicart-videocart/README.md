@@ -25,6 +25,12 @@ autostart cartridge ROMs.
   guide to both boards: the 6809E bus deadlines, the RP2350 features the
   design leans on, and how every subsystem fits together. Read it before
   changing the firmware.
+- **Parts:** [bom/multicart.md](bom/multicart.md) and
+  [bom/videocart.md](bom/videocart.md) — what to buy for each board,
+  with the part numbers and the substitutions that will bite you.
+- **Enclosures:** `3d-printer/` — STLs for the cartridge shells and the
+  encoder knob. Neither board is a standard cartridge outline, so a
+  salvaged shell will not fit; print one.
 
 ---
 
@@ -73,6 +79,9 @@ autostart cartridge ROMs.
 | Input | Rotary encoder with push-button, via a PCF8574 on the same bus |
 | Control | `!RESET` and the CART* autostart line, gated through a 74HCT125 |
 
+Full parts list: [bom/multicart.md](bom/multicart.md). Shell:
+`3d-printer/coco-cartridge-multicart-{top,bottom}.stl`.
+
 ### Videocart
 
 | | |
@@ -82,6 +91,11 @@ autostart cartridge ROMs.
 | HDMI | HSTX on GP12–19 |
 | Display / input | Same OLED, encoder and PCF8574 as the multicart, on I²C0 (GP28/21) |
 | Control | `!RESET` and CART*, as the multicart |
+
+Full parts list: [bom/videocart.md](bom/videocart.md). Shell:
+`3d-printer/coco-cartridge-videocart-*.stl`. The HDMI connector itself
+is an Adafruit DVI breakout on a header — it carries the 220 Ω TMDS
+series resistors, which the board deliberately does not.
 
 On both boards core 1 runs the bus service entirely from SRAM with
 interrupts off, so it keeps meeting the CoCo's bus deadlines while core 0
