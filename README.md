@@ -21,6 +21,17 @@ schematic and board files, notes on the original version 1 (CoCo 1) and
 version 2 (CoCo 2) hardware, and BASIC and Python examples for driving
 it.
 
+## [cocoxt](cocoxt/)
+
+A clone of the Burke & Burke CoCo XT hard disk interface, which puts a
+PC/XT-class MFM controller (WD1002-WX1 and friends) on the CoCo's
+cartridge bus, along with a long write-up on using it from **Disk
+Extended Color BASIC** with B&B's Hyper-I/O rather than OS-9: setup
+sequence, driver gotchas, MSA sizing, booting Hyper-I/O from ROM, and
+why the address lines are inverted. Includes schematics and gerbers for
+two board revisions (one adds an onboard 27C128 socket; untested) and
+tools for verifying a drive image from a Gesswein MFM emulator.
+
 ## [MPI/TheLittleEngineers](MPI/TheLittleEngineers/)
 
 A 3D-printable case (STL files) I made for the Multi-Pak Interface by
