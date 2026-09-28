@@ -3,6 +3,19 @@
 Assorted hardware and software projects for the TRS-80 Color Computer,
 by Dr. Scott M. Baker — <https://www.smbaker.com/>
 
+## [coco-bubble](coco-bubble/)
+
+A cartridge that puts 128 KB of Intel 7110 **magnetic bubble memory**
+behind a Disk BASIC-compatible command set: `DIR`, `SAVE`, `LOAD`,
+`OPEN`, `COPY`, direct-access files and the rest work as they do on a
+disk system, over a non-volatile solid-state medium with no moving
+parts. The 16 KB ROM writes files byte-for-byte as Disk BASIC would, so
+they move to and from real floppies with `COPY`, and a floppy controller
+alongside it in a Multi-Pak becomes drives 1 to 3. Includes the ROM
+source, the PLD for the bus interface, a parts list and assembly notes,
+an emulator test suite, and a detailed account of both the hardware and
+the ROM in [HOW-IT-WORKS.md](coco-bubble/HOW-IT-WORKS.md).
+
 ## [multicart-videocart](multicart-videocart/)
 
 Two Raspberry Pi Pico 2 W cartridges for the CoCo 1/2 that hold your
