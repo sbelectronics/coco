@@ -355,8 +355,36 @@ the card is somewhere other than slot 3.
   `RUN"SAVESYS"` → rebuild. Runtime `OPEN DRIVE n,"/H0/X"` remapping still
   works.
 - The default drive table is baked in too. If it maps a drive to an MSA and
-  the hard disk does not answer at boot, you get an `?FC ERROR` from the
-  startup open — a symptom of the hard disk problem, not a separate fault.
+  the hard disk does not answer at boot — or answers but is blank, see
+  "Error in line 0 at boot" below — you get an `?FC ERROR` from the
+  startup open. A symptom of the hard disk state, not a separate fault.
+
+## Error in line 0 at boot
+
+Once the default drive table maps any drive to an MSA, Hyper-I/O opens that
+MSA during startup, whether it was loaded by `RUN"HYPERIO"` or from ROM. If
+the open fails you get an error "IN 0" the moment the system comes up —
+`?FC ERROR IN 0` is the one seen here. The floppy still works, the hard
+disk doesn't. Two causes have been confirmed to produce exactly this:
+
+- **The hard disk isn't reachable** — the `$DCE0` slot problem described in
+  the ROM section, or anything else that stops the controller answering.
+- **The drive is blank.** On the MFM emulator, starting it with
+  `--initialize` (or any other way of putting a freshly formatted, empty
+  volume behind the controller) produces the same error on every boot, from
+  floppy and from ROM alike. The controller answers, but there is no ID
+  sector or MSA index for the startup open to find. Why it presents as
+  `FC` rather than something more descriptive is not known; it just does.
+  The fix is to put a good image back — copy the working `.emu` file over
+  the emulator's file and restart it. If there is no good image, the
+  drive has to go through XTFMT / HDFMT / MSATOOL again, which means
+  booting with a default drive table that doesn't reference the hard
+  disk (the stock `HYPERDEV.BIN` from the archive disk maps all four
+  drives to floppies).
+
+If it shows up out of nowhere on a setup that was working, suspect the drive
+image before anything else: the same error from two different boot paths
+means the common part, and that is the drive.
 
 ## Using a CoCo SDC as the floppy controller
 
