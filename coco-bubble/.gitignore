@@ -1,0 +1,37 @@
+# Assembler output.  Everything under software/build is produced by
+# `make` from src/; nothing in there is a source of truth.
+software/build/
+
+# WinCUPL intermediates.  cocobub.pld is the source and cocobub.jed is
+# the fuse map you actually burn, so both of those are tracked; the
+# rest are regenerated on every compile.
+pld/*.abs
+pld/*.sim
+pld/*.si
+pld/*.so
+pld/*.tt2
+pld/*.pla
+pld/*.doc
+pld/*.lst
+
+# Eagle autosave and backup files, in case the board files ever join
+# this tree.
+*.b#?
+*.s#?
+*.l#?
+*.b$?
+*.s$?
+*.l$?
+eagle.epf
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Editor and OS litter
+*~
+*.swp
+*.bak
+*.orig
+.DS_Store
+Thumbs.db

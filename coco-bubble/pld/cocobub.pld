@@ -1,0 +1,80 @@
+/* CoCo 2 bubble cartridge interface GAL.
+ *
+ * Synthesizes the 8080-style strobes the 7220 BMC wants (CS/RD/WR) from
+ * the 6809 cartridge bus, decodes the bubble registers byte-exactly, and
+ * drives the '245 buffer and ROM output enables.
+ *
+ * U23 (74HCT30) NANDs A8-A15 into FFPAGE* (low = address in $FFxx), so
+ * the GAL sees the full low address byte AND the page qualifier with
+ * pins to spare. Decode is exact: $FF40/$FF41 only, no mirrors --
+ * $FF42-$FF5F (including the WD1793 registers legacy software probes)
+ * never touch the 7220. Only the $FF40 drive-select latch overlaps our
+ * data FIFO; stray writes there are flushed by the driver's FIFO reset
+ * before every operation.
+ *
+ * FUTURE-PROOFING: the coexistence build (bubble at $FF60/$FF61 decoded
+ * from raw addresses via FFPAGE, SCS* ignored, HDB-DOS-style) is a GAL
+ * reprogram only -- no board respin. A0 is routed as a provision for
+ * future single-byte selects; pins 15-18 are spare macrocells.
+ *
+ * NOTE: When programming using XGPRO/MINIPRO make sure
+ *       to specify ATF22V10C(UES). The "UES" is important.
+ */
+
+name cocobub;
+device g22v10;
+partno x;
+date 1/1/1980;
+designer smbaker;
+company sbsoftware;
+revision 4;
+assembly x;
+location x;
+
+PIN 1  = E;        /* 6809 E clock */
+PIN 2  = !SCS;     /* P1.36, asserted $FF40-$FF5F */
+PIN 3  = !CTS;     /* P1.32, asserted on reads $C000-$FEFF */
+PIN 4  = RW;       /* 6809 R/W, high = read */
+PIN 5  = A1;
+PIN 6  = A2;
+PIN 7  = A3;
+PIN 8  = A4;
+PIN 9  = A5;
+PIN 10 = A6;
+PIN 11 = A7;
+PIN 12 = GND;
+PIN 13 = !FFPAGE;  /* from U23 74HCT30: low = A8-A15 all high ($FFxx page) */
+PIN 14 = A0;       /* I/O macrocell as input; provision, unused here */
+                   /* PINs 15-18 spare macrocells */
+PIN 19 = !ROMOE;   /* ROM OE* */
+PIN 20 = !BUFEN;   /* 74HCT245 (U21) OE* */
+PIN 21 = !BBCS;    /* 7220 CS, stable for the whole cycle */
+PIN 22 = !IOW;     /* 7220 WR strobe, E-gated */
+PIN 23 = !IOR;     /* 7220 RD strobe, E-gated */
+PIN 24 = VCC;
+
+/* Registers byte-exact at $FF40 (data FIFO, A0=0) / $FF41 (cmd/status,
+ * A0=1); A0 goes straight to the 7220. SCS* implies $FF40-$FF5F, so
+ * A1-A4 low pins it to $FF40/$FF41 exactly.
+ *
+ * Coexistence build select term (no SCS; FFPAGE qualifies $FFxx):
+ *   BBADDR = FFPAGE & !A7 & A6 & A5 & !A4 & !A3 & !A2 & !A1;  -- $FF60/61
+ * The coexistence build must ALSO delete the CTS terms (ROMOE never
+ * asserts; BUFEN = SCS-free bubble decode only): on a Y-cable CTS*
+ * reaches both carts, and this ROM must not fight the disk controller's.
+ */
+BBADDR = !A4 & !A3 & !A2 & !A1;
+
+BBCS   = SCS & BBADDR;
+
+IOR    = SCS & BBADDR & E &  RW;
+IOW    = SCS & BBADDR & E & !RW;
+
+/* CTS* is already read-qualified on the CoCo; RW here is belt-and-braces. */
+ROMOE  = CTS & RW;
+
+/* Enable the '245 for ROM reads and bubble register cycles. Deliberately
+ * not E-gated: SCS* deasserts after E falls, so the buffer holds write
+ * data past the IOW rising edge (7220 data hold).
+ */
+BUFEN  = CTS # (SCS & BBADDR);

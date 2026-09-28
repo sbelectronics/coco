@@ -1,0 +1,44 @@
+# Line endings and binary handling.
+#
+# Without this git guessed per file: the PDFs showed as modified
+# forever, and every source file carried line-ending churn that buried
+# the real diffs.
+#
+# Text is normalised to LF in the repository and checked out in the
+# platform's own form.  The BASIC test programs are listings typed at a
+# CoCo, so they live here as ordinary text; the CR-terminated form the
+# machine wants is produced when a disk image is built, not stored.
+
+* text=auto
+
+*.asm       text
+*.inc       text
+*.bas       text
+*.md        text
+*.py        text
+*.txt       text
+Makefile    text
+LICENSE     text
+
+# Real binaries.
+*.rom       binary
+*.bin       binary
+*.dsk       binary
+*.png       binary
+*.jpg       binary
+*.zip       binary
+*.pdf       binary
+
+# Everything the PLD toolchain wrote or reads, left byte for byte.
+#
+# These must not be normalised, and one of them would break if it were:
+# a JEDEC file carries a transmission checksum summed over its own
+# bytes, so dropping a CR from every line invalidates it and a device
+# programmer can refuse the part.  COCOBUB.pdf is not a PDF at all - it
+# is a CUPL PDIF schematic, ASCII with CRLF - which is why the rule is
+# by directory and comes after the *.pdf rule above.
+#
+# -text rather than binary: no conversion, but still diffable, since
+# most of these are readable text.
+pld/**      -text
+pld/*.pdf   -text diff merge
