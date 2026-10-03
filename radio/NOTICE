@@ -1,0 +1,9 @@
+CoCo AM/FM Radio Cartridge
+Copyright 2026 Dr. Scott M Baker <https://www.smbaker.com/>
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The TEF668X firmware patch is copyright Catena / NXP Semiconductors. It is
+not part of this project, is not covered by this license, and is not
+distributed with it. tools/mkpatch.py obtains it at build time, and ROM
+images built with it contain that patch.

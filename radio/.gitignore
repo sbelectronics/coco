@@ -1,0 +1,60 @@
+# ---- ROM build output ---------------------------------------------------
+build/
+*.p
+*.lst
+*.map
+
+# Assembler binaries, if you keep a local copy here (see the Makefile).
+tools/bin/
+
+# ---- TEF6686 firmware patch -----------------------------------------------
+# NEVER COMMIT THESE.  The patch is NXP/Catena copyrighted material;
+# tools/mkpatch.py regenerates both on demand.
+rom/tefpatch.bin
+rom/tefpatch.inc
+
+# ---- WinCUPL output ---------------------------------------------------------
+# Everything the compiler writes except the .jed, which IS committed: it is
+# what gets burned into the ATF22V10C.  Regenerate it whenever DECODE.PLD
+# changes.  Note that CUPL's .pdf is a PDIF netlist, not a document.
+pld/**/*.abs
+pld/**/*.doc
+pld/**/*.sim
+pld/**/*.si
+pld/**/*.so
+pld/**/*.pdf
+pld/**/*.pdif
+pld/**/*.tt2
+pld/**/*.pla
+pld/**/*.pl[0-9]
+pld/**/*.io
+pld/**/*.fit
+pld/**/*.log
+pld/**/*.m2s
+pld/**/*.mx
+pld/**/*.xpt
+pld/**/*.dot
+pld/**/*.pin
+pld/**/*.err
+pld/**/*.oe
+
+# ---- private design notes and board-tool exports ---------------------------
+PLAN*.md
+SCHEMATIC.md
+audio-stage.svg
+*-netlist.txt
+*-partlist.txt
+
+# ---- editors, OS, Python ----------------------------------------------------
+*~
+*.swp
+*.bak
+*.orig
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+@eaDir/
+__pycache__/
+*.pyc

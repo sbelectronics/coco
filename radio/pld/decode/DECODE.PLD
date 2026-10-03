@@ -1,0 +1,121 @@
+Name     DECODE ;
+PartNo   COCO-RADIO-M-U3 ;
+Date     09/10/2026 ;
+Revision 01 ;
+Designer S. Baker ;
+Company  ;
+Assembly CoCo AM/FM radio cartridge (modern, TEF6686 module) ;
+Location U3 ;
+Device   g22v10 ;
+
+/******************************************************************************
+ * "DECODE" - all the glue logic for the CoCo AM/FM radio cartridge
+ * (TEF6686 module).  Purely combinational (no registers, no clock).  Besides
+ * this device the board carries only a 74HCT273 (control latch, U5) and a
+ * 74HCT244 (status port, U7).
+ *
+ *  Board facts worth knowing while reading this file:
+ *    - IC1 is an AT28C256 wired as 16K: chip A14 (pin 1) is tied low and
+ *      A0-A13 come from the bus, so CTS* ($C000-$FEFF) maps onto the
+ *      chip's lower 16K.  The armed write window below covers
+ *      $C000-$DFFF, which contains the preset store at $DF00.  Because
+ *      A13 reaches the chip, the SCS window at $FF40 lands on chip $3F40,
+ *      not on the preset store - see "scratch" below.
+ *    - The status port's ID nibble ($B0) is a '244 input tie, not a PLD
+ *      output.  The latch and status bits (I2C, ARM) never reach this
+ *      device.
+ *
+ *  E-qualification.  Every strobe is ANDed with E.  A '273 clocked by the
+ *  rising edge of an active-low strobe therefore latches at E-fall, where
+ *  6809 write data is still valid for 30 ns; a read buffer enabled only
+ *  during E-high never drives the bus in the E-low half, when the CoCo's
+ *  own RAM read buffer may be on.
+ *
+ *  Registers ($FF5E/$FF5F, SCS range, A4..A1 = 1111, A0 don't care):
+ *      write -> CTLWR  ('273 clock)      read -> STRD ('244 enable)
+ *
+ *  EEPROM (AT28C256 as 16K at $C000-$FEFF):
+ *      reads   : CTS from the SAM (reads only - the SAM never asserts CTS
+ *                on a write, Tandy CoCo 2 service manual).
+ *      writes  : the SAM gives us nothing, so we decode them ourselves:
+ *                E & write & A15 & A14 & !A13 & ARM   ($C000-$DFFF, armed)
+ *                ARM is CTL latch bit 7, cleared by RESET*, set only by
+ *                the ROM's RAM-resident save routine.  Without ARM nothing
+ *                - not BASIC's ROM-to-RAM copy loop, not OS-9 in all-RAM
+ *                map, not a wild store - can write the chip.
+ *      scratch : $FF40-$FF5D (SCS range, A4..A1 != 1111).  The chip sees
+ *                CPU A13..A0, and A13 is HIGH at $FF40, so this window is
+ *                chip $3F40-$3F5D: 30 bytes nothing else can address, and
+ *                NOT an alias of the preset store ($DF40 is chip $1F40).
+ *                (On an 8K 28C64, which has no A13, it would alias $DF40.)
+ *                Armed writes and plain reads are decoded here too.  This
+ *                path needs no SLENB and is the bring-up diagnostic: it can
+ *                prove EEPROM write timing without being able to damage a
+ *                preset.
+ *
+ *  SLENB open-drain emulation.  The Multi-Pak opens its data transceiver
+ *  only for $FF40-$FF7F, CTS reads, or SLENB (DBEN = EN # SLENB # CTS in
+ *  its PAL).  A bare write to $C000 never reaches a slot, so during an
+ *  armed $C000-$DFFF write this pin pulls SLENB low.  The data term is a
+ *  constant; only the output enable switches - the pin drives low or
+ *  floats, never high.  On a bare
+ *  CoCo the only effect is that internal selects are disabled for a half
+ *  cycle in which nothing internal was selected anyway.
+ *
+ *  Glitch freedom of WRWIN: A13-A15 and R/W change only while E is low;
+ *  ARM changes only at E-fall (the '273 clocks there).  So the term can
+ *  only go true after E rises with everything stable, and drops at E-fall.
+ ******************************************************************************/
+
+/* -------- inputs -------- */
+
+Pin 1  = E ;         /* CoCo E clock                                      */
+Pin 2  = Q ;         /* CoCo Q clock (autostart)                          */
+Pin 3  = RW ;        /* CoCo R/W: 1 = read, 0 = write                     */
+Pin 4  = !SCS ;      /* CoCo /SCS: $FF40-$FF5F                            */
+Pin 5  = !CTS ;      /* CoCo /CTS: $C000-$FEFF reads, map 0               */
+Pin 6  = A1 ;        /* CoCo A1                                           */
+Pin 7  = A2 ;        /* CoCo A2                                           */
+Pin 8  = A3 ;        /* CoCo A3                                           */
+Pin 9  = A4 ;        /* CoCo A4                                           */
+Pin 10 = A13 ;       /* CoCo A13                                          */
+Pin 11 = A14 ;       /* CoCo A14                                          */
+Pin 13 = A15 ;       /* CoCo A15                                          */
+Pin 14 = ARM ;       /* '273 Q7 (U5.19): EEPROM write enable (I/O as in)  */
+
+/* -------- outputs -------- */
+
+Pin 15 = SPARE1 ;    /* unused macrocell - leave the pin unconnected      */
+Pin 16 = SCSE ;      /* test point: SCS asserted AND E high               */
+Pin 17 = !STRD ;     /* '244 /OE (U7.1, U7.19): status read $FF5E/F       */
+Pin 18 = !CTLWR ;    /* '273 clock (U5.11): control write $FF5E/F         */
+Pin 19 = !EEOE ;     /* AT28C256 /OE (IC1.22)                             */
+Pin 20 = !EECE ;     /* AT28C256 /CE (IC1.20)                             */
+Pin 21 = !EEWR ;     /* AT28C256 /WE (IC1.27)                             */
+Pin 22 = !SLENB ;    /* CoCo /SLENB (P1.40): open-drain emulation         */
+Pin 23 = CART ;      /* to P1.8 via JP2: Q, the standard autostart        */
+
+/* -------- intermediate terms -------- */
+
+SCSE  = E & SCS ;                              /* SCS low AND E high      */
+REG   = A4 & A3 & A2 & A1 ;                    /* $FF5E-$FF5F              */
+WIN   = SCSE & !REG ;                          /* $FF40-$FF5D scratch win  */
+WINRD = WIN &  RW ;
+WINWR = WIN & !RW & ARM ;
+WRWIN = E & !RW & A15 & A14 & !A13 & ARM ;     /* armed write $C000-$DFFF  */
+
+/* -------- equations -------- */
+
+CTLWR = SCSE & REG & !RW ;                     /* $FF5E/F write            */
+STRD  = SCSE & REG &  RW ;                     /* $FF5E/F read             */
+
+EEOE  = CTS # WINRD ;                          /* ROM reads, scratch reads */
+EEWR  = WINWR # WRWIN ;                        /* both write windows       */
+EECE  = CTS # WINRD # WINWR # WRWIN ;          /* any EEPROM access        */
+
+SLENB    = 'b'1 ;        /* pin declared !SLENB: drives LOW when...       */
+SLENB.oe = WRWIN ;       /* ...enabled, floats otherwise (open-drain)     */
+
+CART = Q ;               /* Color BASIC autostart: Q on CART -> FIRQ      */
+
+SPARE1 = 'b'0 ;
