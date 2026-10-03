@@ -16,6 +16,21 @@ source, the PLD for the bus interface, a parts list and assembly notes,
 an emulator test suite, and a detailed account of both the hardware and
 the ROM in [HOW-IT-WORKS.md](coco-bubble/HOW-IT-WORKS.md).
 
+## [radio](radio/)
+
+An **AM/FM radio cartridge**. Plug it in and the CoCo boots into a radio
+player: big frequency digits, seek, stereo and signal indicators, twelve
+named presets that live in the cartridge's own EEPROM, and audio through
+the computer's TV or monitor sound. The receiver is an NXP TEF6686
+car-radio tuner module; the 6809 drives it over I2C bit-banged through a
+latch, and apart from the module the cartridge is just an EEPROM, a 22V10
+PLD, a latch, a buffer and a dual op-amp. Works on a CoCo 1, 2 or 3,
+directly or in a Multi-Pak. Includes the ROM source, the PLD, the build
+tooling (the tuner's NXP firmware patch is fetched at build time, not
+distributed), and [HOW-IT-WORKS.md](radio/HOW-IT-WORKS.md) on the
+address decode, the tuner bring-up, how the ROM rewrites its own EEPROM,
+and why seek is a host loop.
+
 ## [multicart-videocart](multicart-videocart/)
 
 Two Raspberry Pi Pico 2 W cartridges for the CoCo 1/2 that hold your
